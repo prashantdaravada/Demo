@@ -1,4 +1,2 @@
-streamlit
-networkx
-matplotlib
-python-louvain
+streamlit==1.33.0
+numpy==1.26.4
