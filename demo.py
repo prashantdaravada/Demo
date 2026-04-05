@@ -1,130 +1,92 @@
 import streamlit as st
-import networkx as nx
-import matplotlib.pyplot as plt
+import heapq
 
-# Try importing Louvain
-try:
-    from community import community_louvain
-except ImportError:
-    st.error("Please install: pip install python-louvain")
-    st.stop()
+# --------------------------------------------------
+# FLOW ALLOCATION
+# --------------------------------------------------
+def allocate_flow(supply, hub_demands):
+    allocation = {}
+    remaining = supply
 
-# -----------------------------------
-# Page Config
-# -----------------------------------
-st.set_page_config(page_title="Fan Network Analysis", layout="wide")
+    for hub, demand in hub_demands.items():
+        allocated = min(demand, remaining)
+        allocation[hub] = allocated
+        remaining -= allocated
 
-st.title("🎬 Entertainment Fan Network Analysis")
-
-st.markdown("Analyze fan communities and identify influencers using Graph Theory.")
-
-# -----------------------------------
-# User Input Section
-# -----------------------------------
-st.sidebar.header("🔧 Input Network")
-
-st.sidebar.markdown("Enter edges (connections) as comma-separated pairs:")
-st.sidebar.markdown("Example: A-B, B-C, C-D")
-
-edge_input = st.sidebar.text_area(
-    "Enter Connections",
-    "A-B, A-D, B-D, B-E, C-E, C-F, E-F"
-)
-
-# -----------------------------------
-# Parse Input
-# -----------------------------------
-def parse_edges(edge_text):
-    edges = []
-    pairs = edge_text.split(",")
-    for pair in pairs:
-        if "-" in pair:
-            u, v = pair.strip().split("-")
-            edges.append((u.strip(), v.strip()))
-    return edges
+    return allocation
 
 
-# -----------------------------------
-# Analysis Function
-# -----------------------------------
-def run_analysis(edges):
-    G = nx.Graph()
-    G.add_edges_from(edges)
+# --------------------------------------------------
+# DIJKSTRA ALGORITHM
+# --------------------------------------------------
+def dijkstra(graph, start):
+    distances = {node: float('inf') for node in graph}
+    distances[start] = 0
 
-    # Community Detection
-    partition = community_louvain.best_partition(G)
+    pq = [(0, start)]
 
-    # Influencer Ranking
-    pagerank = nx.pagerank(G)
-    degree = nx.degree_centrality(G)
+    while pq:
+        current_dist, current_node = heapq.heappop(pq)
 
-    sorted_pr = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
+        for neighbor, weight in graph[current_node]:
+            distance = current_dist + weight
 
-    return G, partition, sorted_pr, degree
+            if distance < distances[neighbor]:
+                distances[neighbor] = distance
+                heapq.heappush(pq, (distance, neighbor))
 
-
-# -----------------------------------
-# Visualization Function
-# -----------------------------------
-def draw_graph(G, partition):
-    pos = nx.spring_layout(G, seed=42)
-    colors = [partition[node] for node in G.nodes()]
-
-    fig, ax = plt.subplots()
-    nx.draw(
-        G, pos,
-        with_labels=True,
-        node_color=colors,
-        cmap=plt.cm.Set3,
-        node_size=800,
-        font_size=10,
-        ax=ax
-    )
-    return fig
+    return distances
 
 
-# -----------------------------------
-# Run Analysis Button
-# -----------------------------------
-if st.button("Run Analysis"):
+# --------------------------------------------------
+# SAMPLE GRAPH
+# --------------------------------------------------
+graph = {
+    'HubA': [('C1', 4), ('C2', 6), ('C3', 5)],
+    'HubB': [('C4', 3), ('C5', 7), ('C6', 4)],
+    'C1': [], 'C2': [], 'C3': [],
+    'C4': [], 'C5': [], 'C6': []
+}
 
-    edges = parse_edges(edge_input)
 
-    if len(edges) == 0:
-        st.warning("Please enter valid edges!")
-    else:
-        G, partition, influencers, degree = run_analysis(edges)
+# --------------------------------------------------
+# STREAMLIT UI
+# --------------------------------------------------
+st.title("🚚 E-commerce Delivery Optimization")
 
-        col1, col2 = st.columns(2)
+st.sidebar.header("Input Parameters")
 
-        # -------------------------------
-        # Graph Visualization
-        # -------------------------------
-        with col1:
-            st.subheader("📊 Network Graph")
-            fig = draw_graph(G, partition)
-            st.pyplot(fig)
+# User Inputs
+supply = st.sidebar.number_input("Warehouse Supply", min_value=0, value=100)
 
-        # -------------------------------
-        # Results
-        # -------------------------------
-        with col2:
-            st.subheader("⭐ Influencer Ranking (PageRank)")
-            for node, score in influencers:
-                st.write(f"{node}: {round(score, 3)}")
+hubA_demand = st.sidebar.number_input("HubA Demand", min_value=0, value=60)
+hubB_demand = st.sidebar.number_input("HubB Demand", min_value=0, value=50)
 
-            st.subheader("📈 Degree Centrality")
-            for node, score in degree.items():
-                st.write(f"{node}: {round(score, 3)}")
+hub_demands = {
+    'HubA': hubA_demand,
+    'HubB': hubB_demand
+}
 
-        # -------------------------------
-        # Communities
-        # -------------------------------
-        st.subheader("👥 Detected Communities")
 
-        community_dict = {}
-        for node, comm in partition.items():
-            community_dict.setdefault(comm, []).append(node)
+# --------------------------------------------------
+# RUN BUTTON
+# --------------------------------------------------
+if st.sidebar.button("Optimize Delivery"):
 
-        for comm, members in community_dict.items():
-            st.write(f"Community {comm}: {members}")
+    # Flow Optimization
+    st.subheader("📦 Flow Allocation (Warehouse → Hubs)")
+    flow = allocate_flow(supply, hub_demands)
+
+    for hub, qty in flow.items():
+        st.write(f"{hub}: {qty} packages")
+
+    # Routing Optimization
+    st.subheader("🗺️ Routing (Shortest Paths)")
+
+    for hub in hub_demands.keys():
+        distances = dijkstra(graph, hub)
+
+        st.write(f"**From {hub}:**")
+        for node, dist in distances.items():
+            if node.startswith('C'):
+                st.write(f"{hub} → {node} = {dist}")
